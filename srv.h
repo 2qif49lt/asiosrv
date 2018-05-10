@@ -71,6 +71,7 @@ enum class close_reason :int16_t {
     srv_stop, // 服务关闭
     io_error, // 网络错误
     close_by_peer, // 对方关闭
+    no_accept, // 连接时被拒绝
 };
 
 template <typename Enumeration>
@@ -97,10 +98,13 @@ std::ostream& operator<<(std::ostream& o, const close_reason& r){
             tmp = "service stop";
             break;
         case close_reason::io_error:
-            tmp = "net io error";
+            tmp = "network error";
             break;
         case close_reason::close_by_peer:
             tmp = "closed by peer";
+            break;
+        case close_reason::no_accept:
+            tmp = "not accepted";
             break;
         default:
             tmp = "wrong";
@@ -115,30 +119,26 @@ public:
     base_handler() = default;
     virtual ~base_handler() {}
 
-    // 阻塞连接的连接不会进入connect_handler,如果连接失败sockid为0，否则成功。
-    virtual void connect_handler(uint32_t sockid, const std::string addr, uint16_t port, intptr_t conn_data)  {
+    // 阻塞连接的连接不会进入connect_handler。异步连接如果连接失败sockid为0，否则成功。
+    virtual void connect_handler(uint32_t sockid, const std::string& addr, uint16_t port, intptr_t conn_data)  {
 
     }
-    virtual bool accept_handler(uint32_t sockid, const std::string addr, uint16_t port, intptr_t* conn_data) {
+    virtual bool accept_handler(uint32_t sockid, const std::string& addr, uint16_t port, intptr_t* conn_data) {
         // 设置携带数据
         *conn_data = sockid;
         return true;
     }
     // 返回false 会停止底层继续接收数据,但会继续等待发送给对方的数据发送完成,等待超时关闭。
     // 你也可以调用close()强行关闭。
-    virtual bool msg_handler(uint32_t sockid, const std::string addr, uint16_t port, char* msg, uint32_t len, intptr_t conn_data) {
+    virtual bool msg_handler(uint32_t sockid, const std::string& addr, uint16_t port, char* msg, uint32_t len, intptr_t conn_data) {
         uint32_t tmp = static_cast<uint32_t>(conn_data);
         return true;
     }
-    // accept_handler处理返回false、connect失败不会进入close_handler
-    // error 表示关闭原因:
-    // 0 主动关闭
-    // 1 包头错误
-    // 2 心跳超时
-    virtual void close_handler(uint32_t sockid, const std::string addr, uint16_t port, intptr_t conn_data, close_reason error) {
+    // 阻塞connect失败的不会进入close_handler
+    virtual void close_handler(uint32_t sockid, const std::string& addr, uint16_t port, intptr_t conn_data, close_reason error) {
     }
 
-    // 
+    // 将底层内存管理接口开放给使用者，使框架保持zero-copy。使用者可以使用对象池等。
     virtual char* alloc(const char* data, uint32_t len) {
         auto tmp = new(std::nothrow) char[len];
         std::copy(data, data + len, tmp);
@@ -481,6 +481,11 @@ public:
         });
         return true;
     }
+
+    // 活跃的连接数
+    size_t alives() {
+        return check_connections();
+    }
 private:
 
     int init() {
@@ -518,7 +523,7 @@ private:
         _conn_map.swap(empty_map);
     }
 
-    void check_connections() {
+    size_t check_connections() {
         std::lock_guard<std::mutex> lk(_map_mux);
 
         auto now = std::chrono::steady_clock::now();
@@ -534,6 +539,7 @@ private:
                 ++it;
             }
         }
+        return _conn_map.size();
 
     }
     void add_map(uint32_t sockid, std::shared_ptr<conn_type> conn) {
@@ -558,7 +564,9 @@ private:
                 if (_handler->accept_handler(sockid, ep.address().to_string(), ep.port(), &pconn->_data) == true) {
                     add_map(sockid, pconn);
                     pconn->start();
-                } 
+                } else {
+                    pconn->close_sock(close_reason::no_accept);
+                }
             }
             post_accept();
         });
@@ -630,11 +638,10 @@ public:
         }
         _closed = true;
 
-        try {
-            _sock->shutdown(tcp::socket::shutdown_both);
-            _sock->close();
-        } catch(...) {
-        }
+        system::error_code ec;
+        _sock->shutdown(tcp::socket::shutdown_both, ec);
+        _sock->close(ec);
+        
         _handler->close_handler(_sockid, _remote_addr, _remote_port, 
             _data, cr);
         
@@ -691,7 +698,7 @@ private:
         if (_sending == false) {
             if (_queue.pop(data, len)) {
                 _sending = true;
-
+                // 可以修改为scatter-gather io方式
                 auto self = this->shared_from_this();
                 asio::async_write(*_sock, asio::buffer(data, len), 
                     [this, self, data, len](const system::error_code& ec, std::size_t bytes_transferred){

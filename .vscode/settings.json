@@ -1,0 +1,22 @@
+{
+    "files.associations": {
+        "__config": "cpp",
+        "cstddef": "cpp",
+        "exception": "cpp",
+        "initializer_list": "cpp",
+        "new": "cpp",
+        "stdexcept": "cpp",
+        "typeinfo": "cpp",
+        "cctype": "cpp",
+        "cstdlib": "cpp",
+        "atomic": "cpp",
+        "*.ipp": "cpp",
+        "__locale": "cpp",
+        "array": "cpp",
+        "string_view": "cpp",
+        "iterator": "cpp",
+        "string": "cpp",
+        "vector": "cpp",
+        "ostream": "cpp"
+    }
+}
