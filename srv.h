@@ -532,15 +532,18 @@ private:
 
         while (it != _conn_map.end()) {
             auto diff = now - it->second->living_tick();
+            auto is_closed = it->second->is_closed();
+
             if (diff > time_out_threshold) {
                 it->second->close_sock(close_reason::time_out);
                 it = _conn_map.erase(it);
-            } else {
-                ++it;
+            } else if (is_closed) {
+                it = _conn_map.erase(it);
             }
+            else 
+                ++it;
         }
         return _conn_map.size();
-
     }
     void add_map(uint32_t sockid, std::shared_ptr<conn_type> conn) {
         std::lock_guard<std::mutex> lk(_map_mux);
@@ -645,6 +648,10 @@ public:
         _handler->close_handler(_sockid, _remote_addr, _remote_port, 
             _data, cr);
         
+    }
+    bool is_closed() {
+        std::lock_guard<spinlock> lk(_lock);
+        return _closed;
     }
 private:
     void start() {

@@ -51,17 +51,7 @@ public:
     */  
         _counter_msg_recv.fetch_add(1,std::memory_order_relaxed); 
         // 模拟耗时15ms
-      /*  
-        auto beg = std::chrono::high_resolution_clock::now();
-        while(1) {
-            auto end = std::chrono::high_resolution_clock::now();
-            auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(end - beg).count();
-            if (diff >= 15) {
-                break;
-            }
-            YieldProcessor();
-        }
-        */
+      
         std::this_thread::sleep_for(std::chrono::milliseconds(15));
         const PMsgHead phead = reinterpret_cast<PMsgHead>(msg);
         phead->cmd++;
