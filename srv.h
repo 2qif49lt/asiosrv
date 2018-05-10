@@ -311,10 +311,8 @@ class tcpconn;
 template <size_t HEADER_SIZE = sizeof(msg_head), 
     size_t SIZE_FIELD_OFFSET = offsetof(msg_head, len) > 
 class tcpsrv final{
- //   static_assert(std::is_base_of<base_handler, H>::value, "type H should derive from base_handler");
     using context_guard = typename asio::executor_work_guard<asio::io_context::executor_type>;
     using conn_type = tcpconn<HEADER_SIZE, SIZE_FIELD_OFFSET>;
-  //  using conn_type = tcpconn;
 
     asio::io_context _ioc;
     std::unique_ptr<context_guard> _guard;
@@ -560,16 +558,15 @@ private:
                 tcp::endpoint ep = psock->remote_endpoint(e);
                 if (e) {
                     psock->close(e);
-                    return;
-                }
-
-                auto sockid = _sockid.fetch_add(1, std::memory_order_relaxed);
-                auto pconn = std::make_shared<conn_type>(sockid, _ioc, psock, _handler);
-                if (_handler->accept_handler(sockid, ep.address().to_string(), ep.port(), &pconn->_data) == true) {
-                    add_map(sockid, pconn);
-                    pconn->start();
                 } else {
-                    pconn->close_sock(close_reason::no_accept);
+                    auto sockid = _sockid.fetch_add(1, std::memory_order_relaxed);
+                    auto pconn = std::make_shared<conn_type>(sockid, _ioc, psock, _handler);
+                    if (_handler->accept_handler(sockid, ep.address().to_string(), ep.port(), &pconn->_data) == true) {
+                        add_map(sockid, pconn);
+                        pconn->start();
+                    } else {
+                        pconn->close_sock(close_reason::no_accept);
+                    }
                 }
             }
             post_accept();
