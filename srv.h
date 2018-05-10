@@ -428,8 +428,6 @@ public:
             return;
         } 
         fit->second->close_sock(close_reason::active_close);
-        _handler->close_handler(sockid, fit->second->_remote_addr, 
-            fit->second->_remote_port, fit->second->_data, close_reason::active_close);
         _conn_map.erase(fit);
     }
 
