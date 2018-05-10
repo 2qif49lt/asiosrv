@@ -339,6 +339,7 @@ public:
     ~tcpsrv() {
         if (_working) {
             stop();
+            clean_map();
         }
 
     }
