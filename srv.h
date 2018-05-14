@@ -651,6 +651,9 @@ public:
     }
 private:
     void start() {
+        system::error_code ec;
+        tcp::no_delay option(true); 
+        _sock->set_option(option);
         post_recv_header();
     }
     
