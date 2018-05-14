@@ -653,7 +653,7 @@ private:
     void start() {
         system::error_code ec;
         tcp::no_delay option(true); 
-        _sock->set_option(option);
+        _sock->set_option(option, ec);
         post_recv_header();
     }
     
